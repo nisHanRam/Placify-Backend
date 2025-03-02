@@ -31,7 +31,7 @@ app.use((error, req, res, next) => {
 
 mongoose
   .connect(
-    "mongodb+srv://placify123:placify123@cluster0.pikth.mongodb.net/placifyDB ?retryWrites=true&w=majority&appName=Cluster0"
+    "mongodb+srv://placify123:placify123@cluster0.pikth.mongodb.net/placifyDB?retryWrites=true&w=majority&appName=Cluster0"
   )
   .then(() => app.listen(5000))
   .catch((err) => console.log(err));
