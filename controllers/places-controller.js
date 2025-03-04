@@ -1,17 +1,9 @@
-const uuid = require("uuid");
+const mongoose = require("mongoose");
 const { validationResult } = require("express-validator");
+
 const HttpError = require("../models/http-error");
 const Place = require("../models/place");
-
-let DUMMY_PLACES = [
-  {
-    id: "p1",
-    title: "Taj Mahal",
-    description: "7th Wonder",
-    address: "Agra",
-    creator: "u1",
-  },
-];
+const User = require("../models/user");
 
 const getPlaceById = async (req, res, next) => {
   const placeId = req.params.pid;
@@ -32,6 +24,9 @@ const getPlacesByUserId = async (req, res, next) => {
   let userPlaces;
   try {
     userPlaces = await Place.find({ creator: userId });
+    // Alternate Method
+    // const user = await User.findById(userId).populate("places");
+    // userPlaces = user.places;
   } catch (error) {
     return next(new HttpError("Something went wrong.", 500));
   }
@@ -61,8 +56,26 @@ const createPlace = async (req, res, next) => {
       "https://images.pexels.com/photos/1603650/pexels-photo-1603650.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2",
   });
 
+  let user;
   try {
-    await createdPlace.save();
+    user = await User.findById(creator);
+  } catch (error) {
+    return next(new HttpError("Creating place failed, please try again.", 500));
+  }
+
+  if (!user) {
+    return next(new HttpError("This user does not exist.", 404));
+  }
+
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    await createdPlace.save({ session: sess });
+    user.places.push(createdPlace);
+    // Here, push is a method by mongoose to establish the connection between the two models.
+    // Behind the scenes, mongoose grabs the _id of the newly created place and pushes it into the places field for the user
+    await user.save({ session: sess });
+    await sess.commitTransaction(); // Only at this point changes are saved in the DB
   } catch (err) {
     return next(new HttpError("Creating place failed.", 500));
   }
@@ -104,17 +117,22 @@ const deletePlace = async (req, res, next) => {
 
   let place;
   try {
-    place = await Place.findById(placeId);
-  } catch (error) {    
+    place = await Place.findById(placeId).populate("creator");
+  } catch (error) {
     return next(new HttpError("Deleting place failed.", 500));
   }
-  
+
   if (!place) {
     return next(new HttpError("The place to be deleted does not exist.", 404));
   }
-  
+
   try {
-    await place.deleteOne();
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    await place.deleteOne({ session: sess });
+    place.creator.places.pull(place);
+    await place.creator.save({ session: sess });
+    await sess.commitTransaction();
   } catch (error) {
     console.log(error);
 
